@@ -1,0 +1,402 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generative Art Playground</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #121212;
+            font-family: 'Arial', sans-serif;
+       
+  frameRate(60); }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            max-width: 300px;
+            z-index: 100;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        button {
+            background: #4a4a4a;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        button:hover {
+            background: #5a5a5a;
+        }
+        button.active {
+            background: #0077ff;
+        }
+        .color-palette {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .color-option {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .color-option.selected {
+            border-color: white;
+        }
+        #toggle-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 200;
+        }
+    </style>
+
+<base target="_self">
+
+
+    </head><body><div id="sketch-container"></div>
+    <button id="toggle-controls">☰ Controls</button>
+    <div id="controls">
+        <div class="control-group">
+            <label for="style-selector">Visual Style</label>
+            <div>
+                <button id="style-nebula" class="active">Nebula</button>
+                <button id="style-water">Water Flow</button>
+                <button id="style-aurora">Aurora</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label for="complexity">Complexity: <span id="complexity-value">50</span></label>
+            <input type="range" id="complexity" min="10" max="100" value="50">
+        </div>
+        <div class="control-group">
+            <label for="speed">Speed: <span id="speed-value">5</span></label>
+            <input type="range" id="speed" min="1" max="10" value="5">
+        </div>
+        <div class="control-group">
+            <label for="opacity">Opacity: <span id="opacity-value">80</span></label>
+            <input type="range" id="opacity" min="10" max="100" value="80">
+        </div>
+        <div class="control-group">
+            <label>Color Theme</label>
+            <div class="color-palette">
+                <div class="color-option selected" style="background: linear-gradient(135deg, #ff00cc, #3333ff);" data-palette="0"></div>
+                <div class="color-option" style="background: linear-gradient(135deg, #00ffcc, #0066ff);" data-palette="1"></div>
+                <div class="color-option" style="background: linear-gradient(135deg, #ff6600, #ff0066);" data-palette="2"></div>
+                <div class="color-option" style="background: linear-gradient(135deg, #66ff00, #00ff66);" data-palette="3"></div>
+                <div class="color-option" style="background: linear-gradient(135deg, #9900ff, #00ccff);" data-palette="4"></div>
+            </div>
+        </div>
+        <div class="control-group">
+            <button id="randomize">Randomize</button>
+            <button id="reset">Reset</button>
+        </div>
+    </div>
+
+    <script>
+        const sketch = (p) => {
+            let particles = [];
+            let flowField = [];
+            let cols, rows;
+            let resolution = 20;
+            let zoff = 0;
+            let style = 'nebula';
+            let complexity = 50;
+            let speed = 5;
+            let opacity = 80;
+            let colorPalette = 0;
+            let palettes = [
+                [p.color(255, 0, 204), p.color(51, 51, 255)],
+                [p.color(0, 255, 204), p.color(0, 102, 255)],
+                [p.color(255, 102, 0), p.color(255, 0, 102)],
+                [p.color(102, 255, 0), p.color(0, 255, 102)],
+                [p.color(153, 0, 255), p.color(0, 204, 255)]
+            ];
+
+            p.setup = () => {
+                let canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+                canvas.parent('sketch-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                initParticles();
+                initFlowField();
+                
+                // Setup event listeners for controls
+                document.getElementById('style-nebula').addEventListener('click', () => setStyle('nebula'));
+                document.getElementById('style-water').addEventListener('click', () => setStyle('water'));
+                document.getElementById('style-aurora').addEventListener('click', () => setStyle('aurora'));
+                document.getElementById('complexity').addEventListener('input', (e) => {
+                    complexity = e.target.value;
+                    document.getElementById('complexity-value').textContent = complexity;
+                    initParticles();
+                });
+                document.getElementById('speed').addEventListener('input', (e) => {
+                    speed = e.target.value;
+                    document.getElementById('speed-value').textContent = speed;
+                });
+                document.getElementById('opacity').addEventListener('input', (e) => {
+                    opacity = e.target.value;
+                    document.getElementById('opacity-value').textContent = opacity;
+                });
+                document.querySelectorAll('.color-option').forEach((el, i) => {
+                    el.addEventListener('click', () => {
+                        document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('selected'));
+                        el.classList.add('selected');
+                        colorPalette = i;
+                    });
+                });
+                document.getElementById('randomize').addEventListener('click', randomizeSettings);
+                document.getElementById('reset').addEventListener('click', resetSettings);
+                document.getElementById('toggle-controls').addEventListener('click', () => {
+                    const controls = document.getElementById('controls');
+                    controls.style.display = controls.style.display === 'none' ? 'block' : 'none';
+                });
+            };
+
+            p.draw = () => {
+                p.background(0, 0, 10, 0.1);
+                
+                updateFlowField();
+                
+                for (let particle of particles) {
+                    particle.follow(flowField);
+                    particle.update();
+                    particle.edges();
+                    particle.show();
+                }
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+                initFlowField();
+            };
+
+            function initParticles() {
+                particles = [];
+                const particleCount = p.map(complexity, 10, 100, 500, 5000);
+                for (let i = 0; i < particleCount; i++) {
+                    particles.push(new Particle());
+                }
+            }
+
+            function initFlowField() {
+                cols = p.floor(p.width / resolution);
+                rows = p.floor(p.height / resolution);
+                flowField = new Array(cols * rows);
+            }
+
+            function updateFlowField() {
+                let yoff = 0;
+                for (let y = 0; y < rows; y++) {
+                    let xoff = 0;
+                    for (let x = 0; x < cols; x++) {
+                        let index = x + y * cols;
+                        let angle;
+                        
+                        if (style === 'nebula') {
+                            angle = p.noise(xoff, yoff, zoff) * p.TWO_PI * 4;
+                        } else if (style === 'water') {
+                            angle = p.noise(xoff, yoff, zoff) * p.TWO_PI * 2;
+                        } else { // aurora
+                            angle = p.sin(xoff) * p.cos(yoff) * p.TWO_PI;
+                        }
+                        
+                        let v = p5.Vector.fromAngle(angle);
+                        v.setMag(0.5);
+                        flowField[index] = v;
+                        xoff += 0.1;
+                    }
+                    yoff += 0.1;
+                    zoff += 0.0003 * speed;
+                }
+            }
+
+            function setStyle(newStyle) {
+                style = newStyle;
+                document.querySelectorAll('#controls button[id^="style-"]').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.getElementById(`style-${newStyle}`).classList.add('active');
+            }
+
+            function randomizeSettings() {
+                complexity = p.floor(p.random(10, 100));
+                document.getElementById('complexity').value = complexity;
+                document.getElementById('complexity-value').textContent = complexity;
+                
+                speed = p.floor(p.random(1, 10));
+                document.getElementById('speed').value = speed;
+                document.getElementById('speed-value').textContent = speed;
+                
+                opacity = p.floor(p.random(10, 100));
+                document.getElementById('opacity').value = opacity;
+                document.getElementById('opacity-value').textContent = opacity;
+                
+                colorPalette = p.floor(p.random(0, palettes.length));
+                document.querySelectorAll('.color-option').forEach((el, i) => {
+                    el.classList.toggle('selected', i === colorPalette);
+                });
+                
+                const styles = ['nebula', 'water', 'aurora'];
+                setStyle(styles[p.floor(p.random(styles.length))]);
+                
+                initParticles();
+            }
+
+            function resetSettings() {
+                complexity = 50;
+                document.getElementById('complexity').value = complexity;
+                document.getElementById('complexity-value').textContent = complexity;
+                
+                speed = 5;
+                document.getElementById('speed').value = speed;
+                document.getElementById('speed-value').textContent = speed;
+                
+                opacity = 80;
+                document.getElementById('opacity').value = opacity;
+                document.getElementById('opacity-value').textContent = opacity;
+                
+                colorPalette = 0;
+                document.querySelectorAll('.color-option').forEach((el, i) => {
+                    el.classList.toggle('selected', i === 0);
+                });
+                
+                setStyle('nebula');
+                initParticles();
+            }
+
+            class Particle {
+                constructor() {
+                    this.pos = p.createVector(p.random(p.width), p.random(p.height));
+                    this.vel = p.createVector(0, 0);
+                    this.acc = p.createVector(0, 0);
+                    this.maxspeed = p.map(speed, 1, 10, 1, 5);
+                    this.prevPos = this.pos.copy();
+                    this.life = p.random(100, 200);
+                    this.age = 0;
+                    this.hue = p.random(360);
+                }
+
+                update() {
+                    this.vel.add(this.acc);
+                    this.vel.limit(this.maxspeed);
+                    this.pos.add(this.vel);
+                    this.acc.mult(0);
+                    this.age++;
+                    
+                    if (this.age > this.life) {
+                        this.reset();
+                    }
+                }
+
+                applyForce(force) {
+                    this.acc.add(force);
+                }
+
+                follow(vectors) {
+                    let x = p.floor(this.pos.x / resolution);
+                    let y = p.floor(this.pos.y / resolution);
+                    let index = x + y * cols;
+                    if (index >= 0 && index < vectors.length) {
+                        let force = vectors[index];
+                        this.applyForce(force);
+                    }
+                }
+
+                show() {
+                    let alpha = p.map(opacity, 10, 100, 0.1, 0.8);
+                    let col;
+                    
+                    if (style === 'nebula') {
+                        col = p.lerpColor(
+                            palettes[colorPalette][0],
+                            palettes[colorPalette][1],
+                            p.noise(this.pos.x * 0.01, this.pos.y * 0.01)
+                        );
+                    } else if (style === 'water') {
+                        col = p.color(
+                            p.map(this.pos.x, 0, p.width, p.hue(palettes[colorPalette][0]), p.hue(palettes[colorPalette][1])),
+                            80,
+                            80,
+                            alpha
+                        );
+                    } else { // aurora
+                        col = p.color(
+                            (p.hue(palettes[colorPalette][0]) + p.sin(this.pos.y * 0.01) * 30) % 360,
+                            100,
+                            100,
+                            alpha
+                        );
+                    }
+                    
+                    p.stroke(col);
+                    p.strokeWeight(p.map(opacity, 10, 100, 0.1, 1.5));
+                    p.line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+                    this.updatePrev();
+                }
+
+                updatePrev() {
+                    this.prevPos.x = this.pos.x;
+                    this.prevPos.y = this.pos.y;
+                }
+
+                edges() {
+                    if (this.pos.x > p.width) {
+                        this.pos.x = 0;
+                        this.updatePrev();
+                    }
+                    if (this.pos.x < 0) {
+                        this.pos.x = p.width;
+                        this.updatePrev();
+                    }
+                    if (this.pos.y > p.height) {
+                        this.pos.y = 0;
+                        this.updatePrev();
+                    }
+                    if (this.pos.y < 0) {
+                        this.pos.y = p.height;
+                        this.updatePrev();
+                    }
+                }
+
+                reset() {
+                    this.pos = p.createVector(p.random(p.width), p.random(p.height));
+                    this.prevPos = this.pos.copy();
+                    this.vel = p.createVector(0, 0);
+                    this.acc = p.createVector(0, 0);
+                    this.age = 0;
+                    this.life = p.random(100, 200);
+                }
+            }
+        };
+
+        new p5(sketch);
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
